@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P リアルタイム StudyRoom</title>
+  <!-- Tailwind CSS & FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- 安定版 PeerJS CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      touch-action: manipulation;
+    }
+
+    /* カスタムスクロールバー（暖色テーマ） */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #fff7ed; }
+    ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #ea580c; }
+  </style>
+</head>
+<body class="bg-amber-50/60 text-stone-800 h-screen w-screen overflow-hidden flex flex-col select-none">
+
+  <!-- ==================== 1. タイトル & ルーム一覧画面 ==================== -->
+  <div id="screen-title" class="fixed inset-0 z-40 bg-amber-50/95 backdrop-blur-md flex flex-col overflow-y-auto">
+    <div class="max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto flex flex-col gap-6">
+      
+      <!-- ヘッダーブランディング -->
+      <div class="text-center space-y-2">
+        <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-tr from-orange-500 to-amber-400 text-white rounded-2xl shadow-lg shadow-orange-500/20 transform -rotate-2">
+          <i class="fa-solid fa-mug-hot text-3xl"></i>
+        </div>
+        <h1 class="text-3xl font-extrabold text-stone-800 tracking-tight">P2P リアルタイム StudyRoom</h1>
+        <p class="text-stone-500 text-sm max-w-md mx-auto">温かみのある空間で、仲間と集まって作業・勉強・トークしよう。</p>
+      </div>
+
+      <!-- メインアクションカード -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <!-- 新規ルーム作成ボタン -->
+        <button onclick="openNameModal('host')" class="group relative overflow-hidden bg-gradient-to-br from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white p-6 rounded-2xl shadow-xl shadow-orange-500/20 transition-all duration-300 hover:-translate-y-1 text-left flex flex-col justify-between h-40">
+          <div class="flex items-center justify-between">
+            <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+              <i class="fa-solid fa-plus text-xl"></i>
+            </div>
+            <span class="text-xs bg-white/20 px-2.5 py-1 rounded-full font-medium">簡単作成</span>
+          </div>
+          <div>
+            <div class="font-bold text-lg">新しく部屋を作る</div>
+            <div class="text-xs text-orange-100 mt-1">公開・非公開・パスワード付き部屋を作成できます</div>
+          </div>
+        </button>
+
+        <!-- コードで直接参加ボタン -->
+        <button onclick="openNameModal('guest')" class="group relative overflow-hidden bg-white hover:bg-amber-100/50 border-2 border-amber-200 text-stone-800 p-6 rounded-2xl shadow-md transition-all duration-300 hover:-translate-y-1 text-left flex flex-col justify-between h-40">
+          <div class="flex items-center justify-between">
+            <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+              <i class="fa-solid fa-key text-xl"></i>
+            </div>
+            <span class="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-medium">コード指定</span>
+          </div>
+          <div>
+            <div class="font-bold text-lg text-stone-800">5桁コードで参加</div>
+            <div class="text-xs text-stone-500 mt-1">共有されたコードを入力して直接入室します</div>
+          </div>
+        </button>
+
+        <!-- ルームリフレッシュ・統計 -->
+        <div class="bg-amber-100/60 border border-amber-200 p-6 rounded-2xl flex flex-col justify-between h-40">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-amber-700 uppercase tracking-wider">アクティブ状況</span>
+            <button onclick="refreshPublicRoomsUI()" class="text-amber-600 hover:text-amber-800 text-xs flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg shadow-sm border border-amber-200 transition">
+              <i class="fa-solid fa-rotate-right"></i> 更新
+            </button>
+          </div>
+          <div>
+            <div id="room-count-badge" class="text-2xl font-black text-amber-800">0 個の部屋</div>
+            <div class="text-xs text-amber-600 mt-1">リアルタイムで自動同期中</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- アクティブな公開ルーム一覧 -->
+      <div class="bg-white border border-amber-200/80 rounded-2xl p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-bold text-stone-800 text-base flex items-center gap-2">
+            <i class="fa-solid fa-door-open text-orange-500"></i>
+            募集中の勉強部屋一覧
+          </h2>
+          <span class="text-xs text-stone-400">タップしてすぐ参加可能</span>
+        </div>
+
+        <div id="public-room-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div class="col-span-full py-8 text-center text-stone-400 text-sm flex flex-col items-center justify-center gap-2">
+            <i class="fa-solid fa-spinner fa-spin text-orange-400 text-2xl"></i>
+            <span>オープンな部屋を探しています...</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== 2. モーダル (名前・アバター・設定) ==================== -->
+  <div id="modal-name" class="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="max-w-md w-full bg-white border border-amber-200 rounded-3xl p-6 shadow-2xl my-auto transition-all">
+      
+      <div class="flex items-center justify-between mb-4">
+        <h2 id="modal-title" class="text-xl font-bold text-stone-800">部屋に参加</h2>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <div class="space-y-4 mb-6">
+        
+        <!-- アバター選択 & ローカル画像アップロード -->
+        <div>
+          <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">アイコン画像 / アバター</label>
+          <div class="flex items-center gap-4">
+            <!-- プレビュー -->
+            <div class="relative group">
+              <div id="avatar-preview-container" class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-white text-xl font-bold overflow-hidden shadow-md shadow-orange-500/20 border-2 border-white">
+                <span id="avatar-initial">?</span>
+                <img id="avatar-image-preview" class="w-full h-full object-cover hidden" alt="Avatar">
+              </div>
+            </div>
+            
+            <div class="flex-1 space-y-1">
+              <label class="inline-flex items-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold rounded-xl cursor-pointer transition">
+                <i class="fa-solid fa-image"></i> ローカル画像をアップロード
+                <input type="file" id="input-avatar-file" accept="image/*" class="hidden" onchange="handleAvatarFileSelect(event)">
+              </label>
+              <p class="text-[10px] text-stone-400">※JPG, PNG, GIF対応 (自動リサイズ)</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 名前入力 -->
+        <div>
+          <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">表示名（最大10文字）</label>
+          <input type="text" id="input-username" maxlength="10" placeholder="例: さくら" oninput="updateAvatarPreview()" class="w-full px-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl text-stone-800 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition">
+        </div>
+
+        <!-- 部屋コード入力 (ゲスト参加時) -->
+        <div id="container-room-code" class="hidden">
+          <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">5桁の部屋コード</label>
+          <input type="text" id="input-room-code" maxlength="5" placeholder="例: 7A9K2" class="w-full px-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl text-stone-800 uppercase tracking-widest font-mono text-center text-lg font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition">
+        </div>
+
+        <!-- パスワード入力 (鍵付き部屋参加時) -->
+        <div id="container-join-password" class="hidden">
+          <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">🔒 入室パスワード</label>
+          <input type="password" id="input-join-password" placeholder="合言葉を入力" class="w-full px-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl text-stone-800 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition">
+        </div>
+
+        <!-- ホスト作成時の設定 (プライベート/パスワード) -->
+        <div id="container-host-options" class="hidden space-y-3 pt-2 border-t border-amber-100">
+          <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider">部屋の公開設定</label>
+          
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="setRoomVisibility('public')" id="btn-vis-public" class="px-3 py-2.5 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-700 text-xs font-bold flex items-center justify-center gap-1.5 transition">
+              <i class="fa-solid fa-globe"></i> 公開ルーム
+            </button>
+            <button type="button" onclick="setRoomVisibility('private')" id="btn-vis-private" class="px-3 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-600 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-amber-50 transition">
+              <i class="fa-solid fa-eye-slash"></i> 非公開 (一覧非表示)
+            </button>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-stone-500 mb-1">🔒 パスワード保護 (任意)</label>
+            <input type="password" id="input-host-password" placeholder="パスワードなしで公開" class="w-full px-4 py-2.5 bg-amber-50/50 border border-amber-200 rounded-xl text-stone-800 text-xs focus:outline-none focus:border-orange-500 transition">
+          </div>
+        </div>
+
+        <!-- エラーメッセージ -->
+        <div id="error-message" class="hidden text-rose-600 text-xs bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-center gap-2">
+          <i class="fa-solid fa-circle-exclamation text-rose-500 text-base"></i>
+          <span id="error-text">エラーメッセージ</span>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button onclick="closeModal()" class="w-1/3 py-3 bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold rounded-xl transition">キャンセル</button>
+        <button onclick="submitNameModal()" class="w-2/3 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition">決定して入室</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 3. メインアプリ画面 ==================== -->
+  <div id="screen-app" class="hidden flex-1 flex flex-col h-full w-full overflow-hidden bg-amber-50/40">
+    
+    <!-- 画面上部ヘッダー -->
+    <header class="h-16 bg-white border-b border-amber-200/80 px-4 flex items-center justify-between shrink-0 shadow-sm z-10">
+      
+      <!-- 左側: ルーム情報 & 自分のアバター -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="flex items-center gap-2 bg-amber-100/70 px-3 py-1.5 rounded-xl border border-amber-200">
+          <span class="text-xs text-amber-800 font-bold">ROOM:</span>
+          <span id="display-room-code" class="font-mono font-bold text-orange-600 tracking-wider">-----</span>
+          <button onclick="copyRoomCode()" title="部屋コードをコピー" class="text-amber-700 hover:text-orange-600 ml-1 text-xs p-1 rounded hover:bg-amber-200/60 transition">
+            <i class="fa-solid fa-copy"></i>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 bg-stone-100 border border-stone-200 px-2.5 py-1 rounded-xl">
+          <div id="header-avatar-container" class="w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center overflow-hidden">
+            ?
+          </div>
+          <span id="my-name-tag" class="text-xs text-stone-700 font-semibold truncate max-w-[80px] sm:max-w-[120px]">-----</span>
+        </div>
+      </div>
+
+      <!-- 中央/右側: 主要アクションコントロール -->
+      <div class="flex items-center gap-2">
+        
+        <!-- マイク切替 -->
+        <button id="btn-mic" onclick="toggleMic()" class="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition border border-stone-200 flex items-center gap-2 shadow-sm">
+          <i class="fa-solid fa-microphone-slash text-rose-500"></i>
+          <span class="hidden sm:inline">マイク OFF</span>
+        </button>
+
+        <!-- 画面共有切替 -->
+        <button id="btn-screen" onclick="toggleScreenShare()" class="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition border border-stone-200 flex items-center gap-2 shadow-sm">
+          <i class="fa-solid fa-desktop text-orange-500"></i>
+          <span class="hidden sm:inline">画面共有</span>
+        </button>
+
+        <div class="h-6 w-px bg-amber-200 mx-1"></div>
+
+        <!-- 退出ボタン -->
+        <button onclick="leaveRoom()" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span class="hidden sm:inline">退出</span>
+        </button>
+      </div>
+
+    </header>
+
+    <!-- メインコンテンツエリア -->
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+      
+      <!-- メインワークスペース（画面共有 ＋ 参加者一覧） -->
+      <div class="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
+        
+        <!-- 画面共有グリッドエリア -->
+        <div id="screenshare-grid" class="hidden flex flex-col gap-4">
+          <!-- 動的挿入 -->
+        </div>
+
+        <!-- 参加メンバーグリッド -->
+        <div class="flex-1">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-2">
+              <i class="fa-solid fa-users text-orange-500"></i> 参加中のメンバー
+            </h3>
+            <span id="participant-count-badge" class="text-xs bg-amber-200/60 text-amber-800 font-bold px-2.5 py-0.5 rounded-full">1 名</span>
+          </div>
+          <div id="user-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"></div>
+        </div>
+
+      </div>
+
+      <!-- チャットサイドパネル -->
+      <div class="w-full md:w-80 lg:w-96 bg-white border-t md:border-t-0 md:border-l border-amber-200/80 flex flex-col h-72 md:h-full shrink-0 shadow-sm">
+        
+        <!-- チャットヘッダー -->
+        <div class="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between text-xs font-bold text-stone-600 uppercase tracking-wider">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-comments text-orange-500"></i> ルームチャット
+          </span>
+          <span class="text-[10px] text-stone-400 font-normal">リアルタイム送信</span>
+        </div>
+
+        <!-- メッセージ表示エリア -->
+        <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-stone-50/30"></div>
+
+        <!-- チャット入力フォーム -->
+        <div class="p-3 bg-white border-t border-amber-200/80 shrink-0">
+          <div class="flex items-center gap-2">
+            <label title="画像を添付" class="p-2.5 bg-amber-100/70 hover:bg-amber-200 text-amber-800 rounded-xl cursor-pointer transition flex items-center justify-center">
+              <i class="fa-solid fa-paperclip"></i>
+              <input type="file" id="file-input" class="hidden" accept="image/*,video/*,audio/*" onchange="handleFileUpload(event)">
+            </label>
+            <input type="text" id="chat-input" placeholder="メッセージを入力..." class="flex-1 px-3.5 py-2.5 bg-amber-50/40 border border-amber-200 rounded-xl text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500 transition" onkeydown="if(event.key==='Enter') sendMessage()">
+            <button onclick="sendMessage()" class="p-2.5 bg-gradient-to-tr from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 transition flex items-center justify-center">
+              <i class="fa-solid fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // 定数設定
+    const NG_WORDS = ["しね", "バカ", "アホ", "死ね", "殺す", "キモい", "fuck", "shit", "bitch"];
+    const PEER_PREFIX = "STUDYROOM-WARM-";
+
+    // アプリケーション状態
+    let peer = null;
+    let roomCode = "";
+    let myName = "";
+    let myAvatarData = null; // ローカル画像 Base64
+    let isHost = false;
+    let roomVisibility = 'public'; // 'public' | 'private'
+    let roomPassword = '';
+    
+    let isMicOn = false;
+    let isScreenSharing = false;
+    let localAudioStream = null;
+    let screenStream = null;
+
+    const connections = {}; 
+    const participants = {}; 
+    const chatHistory = []; 
+
+    // ブロードキャストチャネル（リアルタイムルーム同期用）
+    const roomSyncChannel = new BroadcastChannel('studyroom_public_sync');
+
+    // ==================== アバター画像処理 ====================
+
+    function handleAvatarFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (file.size > 2 * 1024 * 1024) {
+        alert("アバター画像は2MB以下にしてください。");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        // 画像を自動リサイズして容量を削減
+        compressImage(e.target.result, 128, 128, (resizedData) => {
+          myAvatarData = resizedData;
+          updateAvatarPreview();
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function compressImage(base64Str, maxWidth, maxHeight, callback) {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        callback(canvas.toDataURL('image/jpeg', 0.85));
+      };
+    }
+
+    function updateAvatarPreview() {
+      const nameInput = document.getElementById('input-username').value.trim();
+      const initialSpan = document.getElementById('avatar-initial');
+      const imgPreview = document.getElementById('avatar-image-preview');
+
+      if (myAvatarData) {
+        imgPreview.src = myAvatarData;
+        imgPreview.classList.remove('hidden');
+        initialSpan.classList.add('hidden');
+      } else {
+        imgPreview.classList.add('hidden');
+        initialSpan.classList.remove('hidden');
+        initialSpan.innerText = nameInput ? nameInput.charAt(0).toUpperCase() : '?';
+      }
+    }
+
+    // ==================== ルーム公開・リアルタイム同期機能 ====================
+
+    function getPublicRooms() {
+      try {
+        const data = localStorage.getItem('studyroom_public_rooms');
+        return data ? JSON.parse(data) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function savePublicRooms(rooms) {
+      try {
+        localStorage.setItem('studyroom_public_rooms', JSON.stringify(rooms));
+      } catch (e) {
+        console.error("Storage error:", e);
+      }
+    }
+
+    function announceRoomPublicly() {
+      if (!isHost || !roomCode || roomVisibility === 'private') return;
+      const rooms = getPublicRooms();
+      rooms[roomCode] = {
+        code: roomCode,
+        hostName: myName,
+        hostAvatar: myAvatarData,
+        hasPassword: !!roomPassword,
+        count: Object.keys(participants).length || 1,
+        updatedAt: Date.now()
+      };
+      savePublicRooms(rooms);
+      roomSyncChannel.postMessage({ type: 'room-updated', rooms: rooms });
+    }
+
+    function removeRoomPublicly() {
+      if (!isHost || !roomCode) return;
+      const rooms = getPublicRooms();
+      delete rooms[roomCode];
+      savePublicRooms(rooms);
+      roomSyncChannel.postMessage({ type: 'room-updated', rooms: rooms });
+    }
+
+    function cleanExpiredRooms() {
+      const rooms = getPublicRooms();
+      const now = Date.now();
+      let changed = false;
+      Object.keys(rooms).forEach(code => {
+        if (now - rooms[code].updatedAt > 300000) {
+          delete rooms[code];
+          changed = true;
+        }
+      });
+      if (changed) savePublicRooms(rooms);
+      return rooms;
+    }
+
+    function refreshPublicRoomsUI() {
+      const rooms = cleanExpiredRooms();
+      const container = document.getElementById('public-room-list');
+      const roomKeys = Object.keys(rooms);
+
+      document.getElementById('room-count-badge').innerText = `${roomKeys.length} 個の部屋`;
+
+      if (roomKeys.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full py-8 text-center text-stone-400 text-sm flex flex-col items-center justify-center gap-2">
+            <i class="fa-solid fa-mug-saucer text-2xl text-amber-300"></i>
+            <span>現在公開されている部屋はありません。部屋を作成してみましょう！</span>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = '';
+      roomKeys.forEach(code => {
+        const room = rooms[code];
+        const card = document.createElement('div');
+        card.className = "bg-amber-50/50 hover:bg-amber-100/60 border border-amber-200/80 rounded-xl p-3.5 flex items-center justify-between transition group";
+        
+        const avatarHtml = room.hostAvatar 
+          ? `<img src="${room.hostAvatar}" class="w-8 h-8 rounded-full object-cover border border-amber-200">`
+          : `<div class="w-8 h-8 rounded-full bg-orange-500 text-white font-bold text-xs flex items-center justify-center">${escapeHtml(room.hostName).charAt(0).toUpperCase()}</div>`;
+
+        card.innerHTML = `
+          <div class="flex items-center gap-3 space-y-0">
+            ${avatarHtml}
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2">
+                <span class="font-mono font-extrabold text-orange-600 bg-amber-100 px-2 py-0.5 rounded text-xs tracking-wider">${room.code}</span>
+                <span class="text-xs font-bold text-stone-700 truncate max-w-[100px]">${escapeHtml(room.hostName)}</span>
+                ${room.hasPassword ? '<i class="fa-solid fa-lock text-xs text-amber-600" title="パスワード保護"></i>' : ''}
+              </div>
+              <div class="text-[11px] text-stone-500 flex items-center gap-2">
+                <span class="flex items-center gap-1 text-amber-700 font-semibold">
+                  <i class="fa-solid fa-user text-[10px]"></i> ${room.count} 人参加中
+                </span>
+              </div>
+            </div>
+          </div>
+          <button onclick="joinPublicRoom('${room.code}', ${room.hasPassword})" class="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-lg shadow-sm transition">
+            参加
+          </button>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    roomSyncChannel.onmessage = (event) => {
+      if (event.data && event.data.type === 'room-updated') {
+        refreshPublicRoomsUI();
+      }
+    };
+
+    function joinPublicRoom(code, hasPassword) {
+      document.getElementById('input-room-code').value = code;
+      openNameModal('guest', hasPassword);
+    }
+
+    setInterval(() => {
+      if (isHost && roomCode) {
+        announceRoomPublicly();
+      }
+    }, 10000);
+
+    // ==================== モーダル ＆ UI操作 ====================
+
+    function setRoomVisibility(mode) {
+      roomVisibility = mode;
+      const btnPublic = document.getElementById('btn-vis-public');
+      const btnPrivate = document.getElementById('btn-vis-private');
+
+      if (mode === 'public') {
+        btnPublic.className = "px-3 py-2.5 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-700 text-xs font-bold flex items-center justify-center gap-1.5 transition";
+        btnPrivate.className = "px-3 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-600 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-amber-50 transition";
+      } else {
+        btnPrivate.className = "px-3 py-2.5 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-700 text-xs font-bold flex items-center justify-center gap-1.5 transition";
+        btnPublic.className = "px-3 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-600 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-amber-50 transition";
+      }
+    }
+
+    function openNameModal(selectedMode, hasPassword = false) {
+      isHost = (selectedMode === 'host');
+      document.getElementById('modal-title').innerText = isHost ? '新しい部屋を作る' : '部屋に参加する';
+      document.getElementById('container-room-code').style.display = isHost ? 'none' : 'block';
+      document.getElementById('container-host-options').style.display = isHost ? 'block' : 'none';
+      document.getElementById('container-join-password').style.display = (!isHost && hasPassword) ? 'block' : 'none';
+      
+      document.getElementById('modal-name').classList.remove('hidden');
+      document.getElementById('error-message').classList.add('hidden');
+      updateAvatarPreview();
+    }
+
+    function closeModal() {
+      document.getElementById('modal-name').classList.add('hidden');
+    }
+
+    function containsNGWords(text) {
+      if (!text) return false;
+      const lower = text.toLowerCase();
+      return NG_WORDS.some(ng => lower.includes(ng));
+    }
+
+    function generateCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 5; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    async function submitNameModal() {
+      const nameInput = document.getElementById('input-username').value.trim();
+      const errorDiv = document.getElementById('error-message');
+      const errorText = document.getElementById('error-text');
+
+      if (!nameInput) {
+        errorText.innerText = "表示名を入力してください。";
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      if (containsNGWords(nameInput)) {
+        errorText.innerText = "不適切な表現が含まれています。";
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      myName = nameInput;
+
+      if (isHost) {
+        roomCode = generateCode();
+        roomPassword = document.getElementById('input-host-password').value.trim();
+        initPeer(PEER_PREFIX + roomCode);
+      } else {
+        const codeInput = document.getElementById('input-room-code').value.trim().toUpperCase();
+        if (codeInput.length !== 5) {
+          errorText.innerText = "正しい5桁のコードを入力してください。";
+          errorDiv.classList.remove('hidden');
+          return;
+        }
+        roomCode = codeInput;
+        initPeer(null);
+      }
+    }
+
+    function initPeer(customId) {
+      closeModal();
+      peer = customId ? new Peer(customId) : new Peer();
+
+      peer.on('open', (id) => {
+        addParticipant(peer.id, myName, myAvatarData, isHost);
+        startAppUI();
+
+        if (isHost) {
+          announceRoomPublicly();
+        } else {
+          connectToHost(PEER_PREFIX + roomCode);
+        }
+      });
+
+      peer.on('error', (err) => {
+        console.error(err);
+        if (err.type === 'unavailable-id') {
+          alert("その部屋コードは既に使われているか接続できません。");
+        } else {
+          alert("接続エラーが発生しました: " + err.type);
+        }
+      });
+
+      peer.on('connection', (conn) => {
+        setupDataConnection(conn);
+      });
+
+      peer.on('call', (call) => {
+        call.answer();
+        setupIncomingMediaCall(call);
+      });
+    }
+
+    function startAppUI() {
+      document.getElementById('screen-title').classList.add('hidden');
+      document.getElementById('screen-app').classList.remove('hidden');
+      document.getElementById('display-room-code').innerText = roomCode;
+      document.getElementById('my-name-tag').innerText = myName;
+
+      // ヘッダーアバター更新
+      const headerAvatar = document.getElementById('header-avatar-container');
+      if (myAvatarData) {
+        headerAvatar.innerHTML = `<img src="${myAvatarData}" class="w-full h-full object-cover">`;
+      } else {
+        headerAvatar.innerText = myName.charAt(0).toUpperCase();
+      }
+    }
+
+    function connectToHost(targetPeerId) {
+      const joinPass = document.getElementById('input-join-password').value.trim();
+      const conn = peer.connect(targetPeerId, { metadata: { name: myName, avatar: myAvatarData, password: joinPass } });
+      setupDataConnection(conn);
+    }
+
+    function setupDataConnection(conn) {
+      conn.on('open', () => {
+        connections[conn.peer] = conn;
+
+        // ホスト側でパスワード検証
+        if (isHost && roomPassword) {
+          const clientPass = conn.metadata ? conn.metadata.password : '';
+          if (clientPass !== roomPassword) {
+            conn.send({ type: 'auth-failed', message: 'パスワードが正しくありません。' });
+            setTimeout(() => conn.close(), 500);
+            return;
+          }
+        }
+
+        conn.send({ type: 'join-info', name: myName, avatar: myAvatarData, peerId: peer.id, isHost: isHost });
+
+        if (isHost) {
+          conn.send({
+            type: 'sync-history',
+            chatHistory: chatHistory,
+            participants: participants
+          });
+          announceRoomPublicly();
+        }
+      });
+
+      conn.on('data', (data) => {
+        handleIncomingData(conn.peer, data);
+      });
+
+      conn.on('close', () => {
+        removeParticipant(conn.peer);
+      });
+    }
+
+    function setupIncomingMediaCall(call) {
+      call.on('stream', (remoteStream) => {
+        const metadata = call.metadata || {};
+
+        if (metadata.type === 'screen') {
+          addScreenShareView(call.peer, metadata.name || '参加者', remoteStream);
+        } else {
+          let audioEl = document.getElementById(`audio-${call.peer}`);
+          if (!audioEl) {
+            audioEl = document.createElement('audio');
+            audioEl.id = `audio-${call.peer}`;
+            audioEl.autoplay = true;
+            document.body.appendChild(audioEl);
+          }
+          audioEl.srcObject = remoteStream;
+        }
+      });
+
+      call.on('close', () => {
+        removeScreenShareView(call.peer);
+      });
+    }
+
+    function handleIncomingData(fromPeerId, data) {
+      if (data.type === 'auth-failed') {
+        alert(data.message);
+        location.reload();
+        return;
+      }
+
+      if (data.type === 'join-info') {
+        addParticipant(fromPeerId, data.name, data.avatar, data.isHost);
+
+        if (isHost) {
+          broadcastData({
+            type: 'participant-joined',
+            peerId: fromPeerId,
+            name: data.name,
+            avatar: data.avatar,
+            isHost: data.isHost
+          }, fromPeerId);
+          announceRoomPublicly();
+        }
+      } else if (data.type === 'participant-joined') {
+        addParticipant(data.peerId, data.name, data.avatar, data.isHost);
+      } else if (data.type === 'sync-history') {
+        if (data.participants) {
+          Object.assign(participants, data.participants);
+          renderUserGrid();
+        }
+        if (data.chatHistory && data.chatHistory.length > 0) {
+          data.chatHistory.forEach(item => {
+            const isMe = item.senderId === peer.id;
+            renderChatMessage(item.name, item.avatar, item.message, isMe, item.file);
+            chatHistory.push(item);
+          });
+        }
+      } else if (data.type === 'chat') {
+        const isMe = data.senderId === peer.id;
+        renderChatMessage(data.name, data.avatar, data.message, isMe, data.file);
+        chatHistory.push(data);
+
+        if (isHost) {
+          broadcastData(data, fromPeerId);
+        }
+      } else if (data.type === 'leave') {
+        removeParticipant(fromPeerId);
+        if (isHost) {
+          broadcastData({ type: 'leave', peerId: fromPeerId }, fromPeerId);
+          announceRoomPublicly();
+        }
+      }
+    }
+
+    function addParticipant(peerId, name, avatar, hostFlag) {
+      participants[peerId] = { name: name, avatar: avatar, isHost: hostFlag };
+      renderUserGrid();
+    }
+
+    function removeParticipant(peerId) {
+      delete participants[peerId];
+      delete connections[peerId];
+      const audioEl = document.getElementById(`audio-${peerId}`);
+      if (audioEl) audioEl.remove();
+      removeScreenShareView(peerId);
+      renderUserGrid();
+      if (isHost) announceRoomPublicly();
+    }
+
+    function renderUserGrid() {
+      const grid = document.getElementById('user-grid');
+      grid.innerHTML = '';
+
+      const count = Object.keys(participants).length;
+      document.getElementById('participant-count-badge').innerText = `${count} 名`;
+
+      Object.keys(participants).forEach(id => {
+        const p = participants[id];
+        const isMe = id === peer?.id;
+
+        const avatarHtml = p.avatar 
+          ? `<img src="${p.avatar}" class="w-12 h-12 rounded-2xl object-cover shadow-md border-2 border-white">`
+          : `<div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-white font-extrabold text-lg shadow-md shadow-orange-500/20">${escapeHtml(p.name).charAt(0).toUpperCase()}</div>`;
+
+        const card = document.createElement('div');
+        card.className = "bg-white border border-amber-200/80 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 relative shadow-sm";
+        card.innerHTML = `
+          ${avatarHtml}
+          <div class="text-xs font-bold text-stone-700 truncate max-w-[100px]">${escapeHtml(p.name)} ${isMe ? '(あなた)' : ''}</div>
+          ${p.isHost ? '<span class="text-[10px] bg-orange-100 text-orange-700 font-bold border border-orange-200 px-2 py-0.5 rounded-full">HOST</span>' : ''}
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // 画面共有ビュー
+    function addScreenShareView(peerId, userName, stream) {
+      const grid = document.getElementById('screenshare-grid');
+      grid.classList.remove('hidden');
+
+      let container = document.getElementById(`screen-container-${peerId}`);
+      if (!container) {
+        container = document.createElement('div');
+        container.id = `screen-container-${peerId}`;
+        container.className = "relative bg-stone-900 rounded-2xl overflow-hidden border border-amber-200 shadow-xl w-full min-h-[300px] max-h-[500px] flex items-center justify-center";
+
+        container.innerHTML = `
+          <video id="video-${peerId}" autoplay playsinline class="w-full h-full object-contain"></video>
+          <div class="absolute top-3 left-3 bg-stone-900/80 backdrop-blur-md px-3 py-1.5 rounded-full text-xs text-amber-400 border border-amber-500/30 flex items-center gap-2 shadow-md">
+            <i class="fa-solid fa-desktop"></i>
+            <span>${escapeHtml(userName)} の画面</span>
+          </div>
+        `;
+        grid.appendChild(container);
+      }
+
+      const video = document.getElementById(`video-${peerId}`);
+      video.srcObject = stream;
+    }
+
+    function removeScreenShareView(peerId) {
+      const container = document.getElementById(`screen-container-${peerId}`);
+      if (container) container.remove();
+
+      const grid = document.getElementById('screenshare-grid');
+      if (grid.children.length === 0) {
+        grid.classList.add('hidden');
+      }
+    }
+
+    // チャットメッセージ送信
+    function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      if (containsNGWords(text)) {
+        alert("不適切な表現が含まれています。");
+        return;
+      }
+
+      const msgObj = {
+        type: 'chat',
+        senderId: peer.id,
+        name: myName,
+        avatar: myAvatarData,
+        message: text,
+        file: null
+      };
+
+      chatHistory.push(msgObj);
+      renderChatMessage(myName, myAvatarData, text, true);
+      broadcastData(msgObj);
+      input.value = '';
+    }
+
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (file.size > 3 * 1024 * 1024) {
+        alert("ファイルサイズは3MB以下にしてください。");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const fileData = { name: file.name, type: file.type, data: e.target.result };
+        const msgObj = {
+          type: 'chat',
+          senderId: peer.id,
+          name: myName,
+          avatar: myAvatarData,
+          message: '',
+          file: fileData
+        };
+
+        chatHistory.push(msgObj);
+        renderChatMessage(myName, myAvatarData, '', true, fileData);
+        broadcastData(msgObj);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function broadcastData(data, excludePeerId = null) {
+      Object.keys(connections).forEach(peerId => {
+        if (peerId !== excludePeerId && connections[peerId] && connections[peerId].open) {
+          connections[peerId].send(data);
+        }
+      });
+    }
+
+    function renderChatMessage(senderName, senderAvatar, message, isMe, file = null) {
+      const chatContainer = document.getElementById('chat-messages');
+      const wrapper = document.createElement('div');
+      wrapper.className = `flex gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} items-start`;
+
+      const avatarHtml = senderAvatar 
+        ? `<img src="${senderAvatar}" class="w-7 h-7 rounded-full object-cover shrink-0 border border-amber-200">`
+        : `<div class="w-7 h-7 rounded-full bg-orange-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">${escapeHtml(senderName).charAt(0).toUpperCase()}</div>`;
+
+      let mediaHtml = '';
+      if (file) {
+        if (file.type.startsWith('image/')) {
+          mediaHtml = `<img src="${file.data}" class="max-w-full rounded-xl mt-1 border border-amber-200 max-h-48 object-cover">`;
+        } else if (file.type.startsWith('video/')) {
+          mediaHtml = `<video src="${file.data}" controls class="max-w-full rounded-xl mt-1 border border-amber-200 max-h-48"></video>`;
+        } else if (file.type.startsWith('audio/')) {
+          mediaHtml = `<audio src="${file.data}" controls class="w-full mt-1"></audio>`;
+        }
+      }
+
+      wrapper.innerHTML = `
+        ${avatarHtml}
+        <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'}">
+          <span class="text-[10px] text-stone-400 mb-0.5 px-1 font-semibold">${escapeHtml(senderName)}</span>
+          <div class="${isMe ? 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white' : 'bg-white text-stone-800 border border-amber-200/80'} px-3.5 py-2 rounded-2xl max-w-[85%] text-xs shadow-sm break-words">
+            ${message ? `<div>${escapeHtml(message)}</div>` : ''}
+            ${mediaHtml}
+          </div>
+        </div>
+      `;
+
+      chatContainer.appendChild(wrapper);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text.replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+      });
+    }
+
+    // マイクの切替
+    async function toggleMic() {
+      const btn = document.getElementById('btn-mic');
+      if (!isMicOn) {
+        try {
+          localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          isMicOn = true;
+          btn.className = "px-3.5 py-2 bg-emerald-500 text-white font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-sm shadow-emerald-500/20";
+          btn.innerHTML = `<i class="fa-solid fa-microphone"></i><span class="hidden sm:inline">マイク ON</span>`;
+
+          Object.keys(connections).forEach(peerId => {
+            peer.call(peerId, localAudioStream, { metadata: { type: 'audio', name: myName } });
+          });
+        } catch (err) {
+          alert("マイクの利用許可が得られませんでした。");
+        }
+      } else {
+        if (localAudioStream) {
+          localAudioStream.getTracks().forEach(track => track.stop());
+        }
+        isMicOn = false;
+        btn.className = "px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition border border-stone-200 flex items-center gap-2 shadow-sm";
+        btn.innerHTML = `<i class="fa-solid fa-microphone-slash text-rose-500"></i><span class="hidden sm:inline">マイク OFF</span>`;
+      }
+    }
+
+    // 画面共有の切替
+    async function toggleScreenShare() {
+      const btn = document.getElementById('btn-screen');
+
+      if (!isScreenSharing) {
+        try {
+          // ブラウザ通知バーを小さくするためのキャプチャ設定オプション
+          screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+            video: { displaySurface: 'window' }, 
+            selfBrowserSurface: 'exclude'
+          });
+          isScreenSharing = true;
+          btn.className = "px-3.5 py-2 bg-orange-500 text-white font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-sm shadow-orange-500/20";
+
+          addScreenShareView(peer.id, myName + " (あなた)", screenStream);
+
+          Object.keys(connections).forEach(peerId => {
+            peer.call(peerId, screenStream, { metadata: { type: 'screen', name: myName } });
+          });
+
+          screenStream.getVideoTracks()[0].onended = () => {
+            stopScreenShare();
+          };
+        } catch (err) {
+          console.log("画面共有がキャンセルされました");
+        }
+      } else {
+        stopScreenShare();
+      }
+    }
+
+    function stopScreenShare() {
+      const btn = document.getElementById('btn-screen');
+      if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+      }
+      removeScreenShareView(peer.id);
+      isScreenSharing = false;
+      btn.className = "px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition border border-stone-200 flex items-center gap-2 shadow-sm";
+    }
+
+    function copyRoomCode() {
+      navigator.clipboard.writeText(roomCode);
+      alert(`部屋コード "${roomCode}" をコピーしました！`);
+    }
+
+    function leaveRoom() {
+      if (isHost) {
+        removeRoomPublicly();
+      }
+      broadcastData({ type: 'leave' });
+      if (peer) peer.destroy();
+      location.reload();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshPublicRoomsUI();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (isHost) {
+        removeRoomPublicly();
+      }
+      broadcastData({ type: 'leave' });
+    });
+  </script>
+</body>
+</html>
